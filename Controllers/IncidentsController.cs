@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using IncidentCopilot.Models;
+using IncidentCopilot.Infrastructure;
 
 namespace IncidentCopilot.Controllers;
 
@@ -8,13 +9,21 @@ namespace IncidentCopilot.Controllers;
 public class IncidentsController : ControllerBase
 {
     private readonly ILogger<IncidentsController> _logger;
+    private readonly CosmosLogRepository? _logRepo;
+    private readonly CosmosIncidentRepository? _incidentRepo;
 
-    public IncidentsController(ILogger<IncidentsController> logger)
+    // The ? means these can be null (if Cosmos DB is not configured)
+    public IncidentsController(
+        ILogger<IncidentsController> logger,
+        CosmosLogRepository? logRepo = null,
+        CosmosIncidentRepository? incidentRepo = null)
     {
         _logger = logger;
+        _logRepo = logRepo;
+        _incidentRepo = incidentRepo;
     }
 
-    // POST /api/incidents/ingest - Will be implemented on Day 3
+    // POST /api/incidents/ingest - Stub for now, Day 3 will add real ingestion
     [HttpPost("ingest")]
     public IActionResult Ingest([FromBody] IngestRequest request)
     {
@@ -24,31 +33,58 @@ public class IncidentsController : ControllerBase
             request.Entries.Count
         );
 
-        // Placeholder: will be replaced with actual ingestion logic on Day 3
-        return Ok(ApiResponse<string>.Ok($"Received {request.Entries.Count} entries for {request.ServiceName}"));
+        return Ok(ApiResponse<string>.Ok(
+            $"Received {request.Entries.Count} entries for {request.ServiceName}"));
     }
 
-    // POST /api/incidents/investigate - Will be implemented on Day 6
+    // POST /api/incidents/investigate - Stub for now, Day 6 will add AI
     [HttpPost("investigate")]
     public IActionResult Investigate([FromBody] InvestigateRequest request)
     {
         _logger.LogInformation("Investigation query: {Question}", request.Question);
 
-        // Placeholder: will be replaced with AI investigation on Day 6
         return Ok(ApiResponse<InvestigateResponse>.Ok(new InvestigateResponse
         {
-            Answer = "Investigation engine not yet implemented. This will be built on Day 6.",
+            Answer = "Investigation engine not yet implemented. Coming on Day 6.",
             SessionId = request.SessionId ?? Guid.NewGuid().ToString()
         }));
     }
 
-    // GET /api/incidents/{id}/timeline - Will be implemented on Day 5
-    [HttpGet("{id}/timeline")]
-    public IActionResult GetTimeline(string id)
+    // POST /api/incidents - Create a new incident record
+    [HttpPost]
+    public async Task<IActionResult> CreateIncident([FromBody] Incident incident)
     {
-        _logger.LogInformation("Timeline requested for incident {IncidentId}", id);
+        if (_incidentRepo == null)
+            return StatusCode(503, ApiResponse<string>.Fail("Database not configured"));
 
-        // Placeholder
-        return Ok(ApiResponse<string>.Ok($"Timeline for incident {id} not yet implemented."));
+        var created = await _incidentRepo.CreateAsync(incident);
+        _logger.LogInformation("Created incident: {Title}", created.Title);
+
+        return Ok(ApiResponse<Incident>.Ok(created));
+    }
+
+    // GET /api/incidents - List all incidents
+    [HttpGet]
+    public async Task<IActionResult> GetAllIncidents()
+    {
+        if (_incidentRepo == null)
+            return StatusCode(503, ApiResponse<string>.Fail("Database not configured"));
+
+        var incidents = await _incidentRepo.GetAllAsync();
+        return Ok(ApiResponse<List<Incident>>.Ok(incidents));
+    }
+
+    // GET /api/incidents/{id}/timeline - Get incident timeline
+    [HttpGet("{id}/timeline")]
+    public async Task<IActionResult> GetTimeline(string id)
+    {
+        if (_incidentRepo == null)
+            return StatusCode(503, ApiResponse<string>.Fail("Database not configured"));
+
+        var incident = await _incidentRepo.GetByIdAsync(id);
+        if (incident == null)
+            return NotFound(ApiResponse<string>.Fail($"Incident {id} not found"));
+
+        return Ok(ApiResponse<Incident>.Ok(incident));
     }
 }

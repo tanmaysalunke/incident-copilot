@@ -1,7 +1,5 @@
 namespace IncidentCopilot.Models;
 
-// This is like a Python dataclass or Pydantic model.
-// It maps to the "CosmosDb" section in appsettings.json.
 public class CosmosDbSettings
 {
     public string Endpoint { get; set; } = string.Empty;
@@ -11,4 +9,7 @@ public class CosmosDbSettings
     public string ServiceGraphContainer { get; set; } = string.Empty;
     public string ConversationsContainer { get; set; } = string.Empty;
     public string IncidentsContainer { get; set; } = string.Empty;
+
+    // Vector search configuration
+    public int EmbeddingDimensions { get; set; } = 1536; // text-embedding-3-small outputs 1536 dimensions
 }

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using IncidentCopilot.Models;
+using IncidentCopilot.Infrastructure;
 
 namespace IncidentCopilot.Controllers;
 
@@ -8,19 +9,37 @@ namespace IncidentCopilot.Controllers;
 public class ServicesController : ControllerBase
 {
     private readonly ILogger<ServicesController> _logger;
+    private readonly CosmosServiceGraphRepository? _serviceRepo;
 
-    public ServicesController(ILogger<ServicesController> logger)
+    public ServicesController(
+        ILogger<ServicesController> logger,
+        CosmosServiceGraphRepository? serviceRepo = null)
     {
         _logger = logger;
+        _serviceRepo = serviceRepo;
     }
 
-    // GET /api/services/graph - Will be implemented on Day 5
+    // GET /api/services/graph - Get the full service dependency graph
     [HttpGet("graph")]
-    public IActionResult GetServiceGraph()
+    public async Task<IActionResult> GetServiceGraph()
     {
-        _logger.LogInformation("Service graph requested");
+        if (_serviceRepo == null)
+            return StatusCode(503, ApiResponse<string>.Fail("Database not configured"));
 
-        // Placeholder
-        return Ok(ApiResponse<string>.Ok("Service graph not yet implemented."));
+        var services = await _serviceRepo.GetAllAsync();
+        return Ok(ApiResponse<List<ServiceNode>>.Ok(services));
+    }
+
+    // POST /api/services - Add or update a service in the graph
+    [HttpPost]
+    public async Task<IActionResult> UpsertService([FromBody] ServiceNode node)
+    {
+        if (_serviceRepo == null)
+            return StatusCode(503, ApiResponse<string>.Fail("Database not configured"));
+
+        var result = await _serviceRepo.UpsertAsync(node);
+        _logger.LogInformation("Upserted service: {ServiceName}", result.Id);
+
+        return Ok(ApiResponse<ServiceNode>.Ok(result));
     }
 }
