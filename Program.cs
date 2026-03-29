@@ -2,6 +2,7 @@ using Microsoft.Azure.Cosmos;
 using IncidentCopilot.Models;
 using IncidentCopilot.Infrastructure;
 using Serilog;
+using IncidentCopilot.Services;
 
 // Configure Serilog
 Log.Logger = new LoggerConfiguration()
@@ -52,6 +53,9 @@ try
         builder.Services.AddSingleton<CosmosServiceGraphRepository>();
         builder.Services.AddSingleton<CosmosIncidentRepository>();
         builder.Services.AddSingleton<CosmosConversationRepository>();
+        builder.Services.AddSingleton<LogNormalizer>();
+        builder.Services.AddSingleton<TemporalChunker>();
+        builder.Services.AddSingleton<IngestionService>();
     }
     else
     {

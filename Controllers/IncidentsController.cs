@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using IncidentCopilot.Models;
 using IncidentCopilot.Infrastructure;
+using IncidentCopilot.Services;
 
 namespace IncidentCopilot.Controllers;
 
@@ -11,30 +12,36 @@ public class IncidentsController : ControllerBase
     private readonly ILogger<IncidentsController> _logger;
     private readonly CosmosLogRepository? _logRepo;
     private readonly CosmosIncidentRepository? _incidentRepo;
+    private readonly IngestionService? _ingestionService;
 
     // The ? means these can be null (if Cosmos DB is not configured)
     public IncidentsController(
         ILogger<IncidentsController> logger,
         CosmosLogRepository? logRepo = null,
-        CosmosIncidentRepository? incidentRepo = null)
+        CosmosIncidentRepository? incidentRepo = null,
+        IngestionService? ingestionService = null)
     {
         _logger = logger;
         _logRepo = logRepo;
         _incidentRepo = incidentRepo;
+        _ingestionService = ingestionService;
     }
 
-    // POST /api/incidents/ingest - Stub for now, Day 3 will add real ingestion
+    // POST /api/incidents/ingest - Ingest log entries through the pipeline
     [HttpPost("ingest")]
-    public IActionResult Ingest([FromBody] IngestRequest request)
+    public async Task<IActionResult> Ingest([FromBody] IngestRequest request)
     {
+        if (_ingestionService == null)
+            return StatusCode(503, ApiResponse<string>.Fail("Ingestion service not configured"));
+
         _logger.LogInformation(
             "Ingest request received for service {ServiceName} with {EntryCount} entries",
-            request.ServiceName,
-            request.Entries.Count
+            request.ServiceName, request.Entries.Count
         );
 
-        return Ok(ApiResponse<string>.Ok(
-            $"Received {request.Entries.Count} entries for {request.ServiceName}"));
+        var result = await _ingestionService.IngestAsync(request.ServiceName, request.Entries);
+
+        return Ok(ApiResponse<IngestionResult>.Ok(result));
     }
 
     // POST /api/incidents/investigate - Stub for now, Day 6 will add AI
