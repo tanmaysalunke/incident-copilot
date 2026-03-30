@@ -25,35 +25,20 @@ Existing observability platforms (Datadog, Grafana, PagerDuty) have started addi
 \## How It Works
 
 ```mermaid
-
 graph TB
-
-&#x20;   A\[Engineer asks question] --> B\[Semantic Kernel + gpt-4o]
-
-&#x20;   B --> C{Function Calling}
-
-&#x20;   C --> D\[Search Logs by Time]
-
-&#x20;   C --> E\[Search Logs by Service]
-
-&#x20;   C --> F\[Get Service Dependencies]
-
-&#x20;   C --> G\[Get Incident Details]
-
-&#x20;   D --> H\[Hybrid Retrieval Engine]
-
-&#x20;   E --> H
-
-&#x20;   H --> I\[Temporal Filter]
-
-&#x20;   I --> J\[Vector Search]
-
-&#x20;   J --> K\[Severity Boost]
-
-&#x20;   K --> L\[Cross-Service Expansion]
-
-&#x20;   L --> M\[Grounded Answer with Citations]
-
+    A[Engineer asks question] --> B[Semantic Kernel + gpt-4o]
+    B --> C{Function Calling}
+    C --> D[Search Logs by Time]
+    C --> E[Search Logs by Service]
+    C --> F[Get Service Dependencies]
+    C --> G[Get Incident Details]
+    D --> H[Hybrid Retrieval Engine]
+    E --> H
+    H --> I[Temporal Filter]
+    I --> J[Vector Search]
+    J --> K[Severity Boost]
+    K --> L[Cross-Service Expansion]
+    L --> M[Grounded Answer with Citations]
 ```
 
 
