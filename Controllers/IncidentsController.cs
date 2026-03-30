@@ -13,18 +13,21 @@ public class IncidentsController : ControllerBase
     private readonly CosmosLogRepository? _logRepo;
     private readonly CosmosIncidentRepository? _incidentRepo;
     private readonly IngestionService? _ingestionService;
+    private readonly InvestigationService? _investigationService;
 
     // The ? means these can be null (if Cosmos DB is not configured)
     public IncidentsController(
         ILogger<IncidentsController> logger,
         CosmosLogRepository? logRepo = null,
         CosmosIncidentRepository? incidentRepo = null,
-        IngestionService? ingestionService = null)
+        IngestionService? ingestionService = null,
+        InvestigationService? investigationService = null)
     {
         _logger = logger;
         _logRepo = logRepo;
         _incidentRepo = incidentRepo;
         _ingestionService = ingestionService;
+        _investigationService = investigationService;
     }
 
     // POST /api/incidents/ingest - Ingest log entries through the pipeline
@@ -44,17 +47,21 @@ public class IncidentsController : ControllerBase
         return Ok(ApiResponse<IngestionResult>.Ok(result));
     }
 
-    // POST /api/incidents/investigate - Stub for now, Day 6 will add AI
+    // POST /api/incidents/investigate - AI-powered investigation
     [HttpPost("investigate")]
-    public IActionResult Investigate([FromBody] InvestigateRequest request)
+    public async Task<IActionResult> Investigate([FromBody] InvestigateRequest request)
     {
+        if (_investigationService == null)
+            return StatusCode(503, ApiResponse<string>.Fail("Investigation service not configured"));
+
         _logger.LogInformation("Investigation query: {Question}", request.Question);
 
-        return Ok(ApiResponse<InvestigateResponse>.Ok(new InvestigateResponse
-        {
-            Answer = "Investigation engine not yet implemented. Coming on Day 6.",
-            SessionId = request.SessionId ?? Guid.NewGuid().ToString()
-        }));
+        var response = await _investigationService.InvestigateAsync(
+            request.Question,
+            request.SessionId
+        );
+
+        return Ok(ApiResponse<InvestigationResponse>.Ok(response));
     }
 
     // POST /api/incidents - Create a new incident record

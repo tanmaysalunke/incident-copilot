@@ -16,14 +16,6 @@ public class InvestigateRequest
     public string? SessionId { get; set; } // For follow-up questions
 }
 
-// What the API returns for investigation queries
-public class InvestigateResponse
-{
-    public string Answer { get; set; } = string.Empty;
-    public List<string> CitedLogChunkIds { get; set; } = new();
-    public string SessionId { get; set; } = string.Empty;
-}
-
 // Standard API response wrapper
 public class ApiResponse<T>
 {

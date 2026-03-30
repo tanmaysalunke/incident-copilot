@@ -58,6 +58,8 @@ try
         builder.Services.AddSingleton<EmbeddingService>();
         builder.Services.AddSingleton<IngestionService>();
         builder.Services.AddSingleton<RetrievalService>();
+        builder.Services.AddSingleton<IncidentInvestigationPlugin>();
+        builder.Services.AddSingleton<InvestigationService>();
 
     }
     else
