@@ -2,23 +2,17 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace IncidentCopilot.Controllers;
 
-// [ApiController] tells ASP.NET this class handles HTTP requests
-// [Route("api/[controller]")] maps this to /api/health
-// In Python/FastAPI, this is like @app.get("/api/health")
 [ApiController]
 [Route("api/[controller]")]
 public class HealthController : ControllerBase
 {
     private readonly ILogger<HealthController> _logger;
 
-    // Constructor injection. ASP.NET automatically provides the logger.
-    // In Python, this is like __init__(self, logger).
     public HealthController(ILogger<HealthController> logger)
     {
         _logger = logger;
     }
 
-    // GET /api/health
     [HttpGet]
     public IActionResult GetHealth()
     {
@@ -29,7 +23,18 @@ public class HealthController : ControllerBase
             status = "healthy",
             timestamp = DateTime.UtcNow,
             service = "IncidentCopilot",
-            version = "1.0.0"
+            version = "1.0.0",
+            endpoints = new
+            {
+                health = "GET /api/health",
+                ingest = "POST /api/incidents/ingest",
+                investigate = "POST /api/incidents/investigate",
+                search = "POST /api/search",
+                compare = "POST /api/search/compare",
+                seed = "POST /api/seed",
+                services = "GET /api/services/graph",
+                incidents = "GET /api/incidents"
+            }
         });
     }
 }

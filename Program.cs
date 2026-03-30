@@ -1,14 +1,15 @@
 using Microsoft.Azure.Cosmos;
 using IncidentCopilot.Models;
 using IncidentCopilot.Infrastructure;
-using Serilog;
 using IncidentCopilot.Services;
+using Serilog;
 
-// Configure Serilog
+// Configure Serilog with correlation ID support
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
+    .Enrich.FromLogContext() // This enables correlation IDs in log output
     .WriteTo.Console(outputTemplate:
-        "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
+        "[{Timestamp:HH:mm:ss} {Level:u3}] [{CorrelationId}] {Message:lj}{NewLine}{Exception}")
     .CreateLogger();
 
 try
@@ -18,31 +19,28 @@ try
     var builder = WebApplication.CreateBuilder(args);
     builder.Host.UseSerilog();
 
-    // Bind configuration sections to settings classes
+    // Bind configuration sections
     builder.Services.Configure<CosmosDbSettings>(
         builder.Configuration.GetSection("CosmosDb"));
     builder.Services.Configure<AzureOpenAISettings>(
         builder.Configuration.GetSection("AzureOpenAI"));
 
-    // Register the Cosmos DB client as a singleton (one instance shared across the app).
-    // In Python, this is like creating a single database connection pool at startup.
+    // Register Cosmos DB client and repositories
     var cosmosDbSettings = builder.Configuration.GetSection("CosmosDb").Get<CosmosDbSettings>();
 
-    if (cosmosDbSettings != null && !string.IsNullOrEmpty(cosmosDbSettings.Endpoint))
+    if (cosmosDbSettings != null && !string.IsNullOrEmpty(cosmosDbSettings.Endpoint)
+        && !string.IsNullOrEmpty(cosmosDbSettings.Key))
     {
         var cosmosClient = new CosmosClient(
             cosmosDbSettings.Endpoint,
             cosmosDbSettings.Key,
             new CosmosClientOptions
             {
-                // Serialize enum values as strings (not numbers) in JSON
                 SerializerOptions = new CosmosSerializationOptions
                 {
                     PropertyNamingPolicy = CosmosPropertyNamingPolicy.CamelCase
                 },
-                // Use Direct mode for best performance
                 ConnectionMode = ConnectionMode.Direct,
-                // Set the application region to match your Cosmos DB location
                 ApplicationRegion = Regions.WestUS2
             }
         );
@@ -53,6 +51,8 @@ try
         builder.Services.AddSingleton<CosmosServiceGraphRepository>();
         builder.Services.AddSingleton<CosmosIncidentRepository>();
         builder.Services.AddSingleton<CosmosConversationRepository>();
+
+        // Register pipeline services
         builder.Services.AddSingleton<LogNormalizer>();
         builder.Services.AddSingleton<TemporalChunker>();
         builder.Services.AddSingleton<EmbeddingService>();
@@ -60,7 +60,6 @@ try
         builder.Services.AddSingleton<RetrievalService>();
         builder.Services.AddSingleton<IncidentInvestigationPlugin>();
         builder.Services.AddSingleton<InvestigationService>();
-
     }
     else
     {
@@ -71,7 +70,11 @@ try
 
     var app = builder.Build();
 
-    // Initialize the database and containers on startup
+    // Middleware pipeline (order matters!)
+    app.UseMiddleware<CorrelationIdMiddleware>();  // First: assign correlation ID
+    app.UseMiddleware<ExceptionMiddleware>();       // Second: catch any exceptions
+
+    // Initialize database on startup
     if (app.Services.GetService<CosmosDbInitializer>() != null)
     {
         var initializer = app.Services.GetRequiredService<CosmosDbInitializer>();
