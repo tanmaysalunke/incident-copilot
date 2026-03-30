@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using IncidentCopilot.Models;
 using IncidentCopilot.Services;
-using IncidentCopilot.Infrastructure;
 
 namespace IncidentCopilot.Controllers;
 
@@ -10,83 +9,136 @@ namespace IncidentCopilot.Controllers;
 public class SearchController : ControllerBase
 {
     private readonly ILogger<SearchController> _logger;
-    private readonly EmbeddingService? _embeddingService;
-    private readonly CosmosLogRepository? _logRepo;
+    private readonly RetrievalService? _retrievalService;
 
     public SearchController(
         ILogger<SearchController> logger,
-        EmbeddingService? embeddingService = null,
-        CosmosLogRepository? logRepo = null)
+        RetrievalService? retrievalService = null)
     {
         _logger = logger;
-        _embeddingService = embeddingService;
-        _logRepo = logRepo;
+        _retrievalService = retrievalService;
     }
 
     /// <summary>
     /// POST /api/search
-    /// Search log chunks using natural language.
-    /// The query is converted to a vector and compared against stored log chunk embeddings.
+    /// Hybrid search: temporal filter + vector search + severity boost + cross-service correlation.
     /// </summary>
     [HttpPost]
-    public async Task<IActionResult> Search([FromBody] SearchRequest request)
+    public async Task<IActionResult> HybridSearch([FromBody] SearchRequest request)
     {
-        if (_embeddingService == null || _logRepo == null)
-            return StatusCode(503, ApiResponse<string>.Fail("Search services not configured"));
+        if (_retrievalService == null)
+            return StatusCode(503, ApiResponse<string>.Fail("Retrieval service not configured"));
 
-        _logger.LogInformation("Search query: {Query}", request.Query);
-
-        // Step 1: Convert the user's question into a vector
-        var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(request.Query);
-
-        // Step 2: Find the most similar log chunks in Cosmos DB
-        var results = await _logRepo.VectorSearchAsync(
-            queryEmbedding,
-            serviceName: request.ServiceName,
-            topK: request.TopK
-        );
-
-        _logger.LogInformation(
-            "Search returned {Count} results for query: {Query}",
-            results.Count, request.Query
-        );
-
-        // Step 3: Return results without the embedding vectors (they are huge and not useful to display)
-        var response = results.Select(r => new SearchResultItem
+        var query = new RetrievalQuery
         {
-            Id = r.Id,
-            ServiceName = r.ServiceName,
-            TimeStart = r.TimeStart,
-            TimeEnd = r.TimeEnd,
-            Severity = r.Severity,
-            ChunkText = r.ChunkText,
-            EntryCount = r.RawEntries.Count
-        }).ToList();
+            Question = request.Query,
+            ServiceName = request.ServiceName,
+            TimeStart = request.TimeStart,
+            TimeEnd = request.TimeEnd,
+            TopK = request.TopK
+        };
 
-        return Ok(ApiResponse<List<SearchResultItem>>.Ok(response));
+        var result = await _retrievalService.RetrieveAsync(query);
+
+        var response = FormatResult(result);
+        return Ok(ApiResponse<object>.Ok(response));
+    }
+
+    /// <summary>
+    /// POST /api/search/compare
+    /// Compare hybrid retrieval vs naive vector search side by side.
+    /// This endpoint is great for demos and interviews.
+    /// </summary>
+    [HttpPost("compare")]
+    public async Task<IActionResult> CompareSearch([FromBody] SearchRequest request)
+    {
+        if (_retrievalService == null)
+            return StatusCode(503, ApiResponse<string>.Fail("Retrieval service not configured"));
+
+        // Run hybrid retrieval
+        var hybridQuery = new RetrievalQuery
+        {
+            Question = request.Query,
+            ServiceName = request.ServiceName,
+            TimeStart = request.TimeStart,
+            TimeEnd = request.TimeEnd,
+            TopK = request.TopK
+        };
+        var hybridResult = await _retrievalService.RetrieveAsync(hybridQuery);
+
+        // Run naive vector search
+        var naiveResult = await _retrievalService.NaiveSearchAsync(request.Query, request.TopK);
+
+        var comparison = new
+        {
+            query = request.Query,
+            hybrid = FormatResult(hybridResult),
+            naive = FormatResult(naiveResult),
+            analysis = GenerateComparison(hybridResult, naiveResult)
+        };
+
+        return Ok(ApiResponse<object>.Ok(comparison));
+    }
+
+    private object FormatResult(RetrievalResult result)
+    {
+        return new
+        {
+            servicesSearched = result.ServicesSearched,
+            totalCandidates = result.TotalCandidates,
+            results = result.Results.Select(r => new
+            {
+                serviceName = r.Chunk.ServiceName,
+                timeStart = r.Chunk.TimeStart,
+                timeEnd = r.Chunk.TimeEnd,
+                severity = r.Chunk.Severity,
+                similarityScore = Math.Round(r.SimilarityScore, 4),
+                severityWeight = r.SeverityWeight,
+                finalScore = Math.Round(r.FinalScore, 4),
+                fromRelatedService = r.IsFromRelatedService,
+                chunkText = r.Chunk.ChunkText,
+                entryCount = r.Chunk.RawEntries.Count
+            }).ToList()
+        };
+    }
+
+    private object GenerateComparison(RetrievalResult hybrid, RetrievalResult naive)
+    {
+        // Count how many ERROR/FATAL chunks each method surfaced
+        var hybridErrors = hybrid.Results.Count(r =>
+            r.Chunk.Severity == "ERROR" || r.Chunk.Severity == "FATAL");
+        var naiveErrors = naive.Results.Count(r =>
+            r.Chunk.Severity == "ERROR" || r.Chunk.Severity == "FATAL");
+
+        // Count unique services found
+        var hybridServices = hybrid.Results.Select(r => r.Chunk.ServiceName).Distinct().Count();
+        var naiveServices = naive.Results.Select(r => r.Chunk.ServiceName).Distinct().Count();
+
+        // Count cross-service results in hybrid
+        var crossServiceResults = hybrid.Results.Count(r => r.IsFromRelatedService);
+
+        return new
+        {
+            hybridErrorChunks = hybridErrors,
+            naiveErrorChunks = naiveErrors,
+            hybridServicesFound = hybridServices,
+            naiveServicesFound = naiveServices,
+            crossServiceExpansionResults = crossServiceResults,
+            summary = $"Hybrid found {hybridErrors} error/fatal chunks across {hybridServices} services " +
+                      $"(including {crossServiceResults} from related services). " +
+                      $"Naive found {naiveErrors} error/fatal chunks across {naiveServices} services."
+        };
     }
 }
 
 /// <summary>
-/// What the client sends when searching.
+/// Search request with optional temporal filtering.
 /// </summary>
 public class SearchRequest
 {
     public string Query { get; set; } = string.Empty;
-    public string? ServiceName { get; set; } // Optional: filter by service
-    public int TopK { get; set; } = 5; // Number of results to return
-}
-
-/// <summary>
-/// A single search result (log chunk without the embedding vector).
-/// </summary>
-public class SearchResultItem
-{
-    public string Id { get; set; } = string.Empty;
-    public string ServiceName { get; set; } = string.Empty;
-    public DateTime TimeStart { get; set; }
-    public DateTime TimeEnd { get; set; }
-    public string Severity { get; set; } = string.Empty;
-    public string ChunkText { get; set; } = string.Empty;
-    public int EntryCount { get; set; }
+    public string? ServiceName { get; set; }
+    public DateTime? TimeStart { get; set; }
+    public DateTime? TimeEnd { get; set; }
+    public int TopK { get; set; } = 5;
 }

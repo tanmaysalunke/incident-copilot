@@ -57,6 +57,8 @@ try
         builder.Services.AddSingleton<TemporalChunker>();
         builder.Services.AddSingleton<EmbeddingService>();
         builder.Services.AddSingleton<IngestionService>();
+        builder.Services.AddSingleton<RetrievalService>();
+
     }
     else
     {
