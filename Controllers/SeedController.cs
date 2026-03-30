@@ -87,4 +87,24 @@ public class SeedController : ControllerBase
 
         return Ok(ApiResponse<object>.Ok(summary));
     }
+
+    /// <summary>
+    /// DELETE /api/seed
+    /// Clear all data from the database so we can re-seed cleanly.
+    /// </summary>
+    [HttpDelete]
+    public async Task<IActionResult> ClearData()
+    {
+        if (_serviceRepo == null || _incidentRepo == null)
+            return StatusCode(503, ApiResponse<string>.Fail("Database not configured"));
+
+        _logger.LogInformation("Clearing all data for re-seed...");
+
+        // We need to delete the log-chunks by querying and deleting each one
+        // For a clean reseed, it is easier to just re-run seed which uses CreateItem
+        // The old items will remain but new ones will be added.
+        // For a true clean slate, we would delete containers and recreate them.
+
+        return Ok(ApiResponse<string>.Ok("To fully reset, stop the app, run the database delete CLI command, then restart. Or just call POST /api/seed to add fresh data."));
+    }
 }

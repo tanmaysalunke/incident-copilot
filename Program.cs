@@ -55,6 +55,7 @@ try
         builder.Services.AddSingleton<CosmosConversationRepository>();
         builder.Services.AddSingleton<LogNormalizer>();
         builder.Services.AddSingleton<TemporalChunker>();
+        builder.Services.AddSingleton<EmbeddingService>();
         builder.Services.AddSingleton<IngestionService>();
     }
     else
